@@ -1,0 +1,100 @@
+local format = string.format
+local sub    = string.sub
+local gsub   = string.gsub
+
+local CODEX = {
+	['{%'] = function(code)
+		return code
+	end,
+
+	['{{'] = function(code)
+		return format('__o[#__o+1] = %s', code)
+	end
+}
+
+local function parse(tmpl, locals)
+	-- matches an empty block %b{} in our gmatch below
+	local tmpl = tmpl .. '{}'
+
+	-- `compile` returns a function which accepts a table
+	local code = {
+		'return function(params) \n local __o = {}'
+	}
+
+	-- In order to facilitate local variables, we compile in
+	-- the list of allowed local variables for a given template, e.g.
+	--
+	-- Given:
+	--     locals = { 'user', 'post' }
+	--
+	-- Result:
+	--     local user = params["user']
+	--     local post = params["post']
+	--
+	for _, var in ipairs(locals) do
+		code[#code+1] = format('local %s = params["%s"]', var, var)
+	end
+
+	-- Split the entire template by text + block pairs.
+	--
+	-- - block => string enclosed by matching `{ }`
+	-- - text => anything not beginning with a `{`.
+	--
+	for text, block in string.gmatch(tmpl, "([^{]-)(%b{})") do
+		-- operations are defined in our CODEX table.
+		local op = CODEX[sub(block, 1, 2)]
+
+		-- case 1: append the text, apply the op
+		if op then
+			code[#code+1] = format('__o[#__o+1] = [[%s]]', text)
+			code[#code+1] = op(sub(block, 3, -3))
+		-- case 2: no operation, so we did a false positive match
+		elseif #block > 2 then
+			code[#code+1] = format('__o[#__o+1] = [[%s%s]]', text, block)
+		-- case 3: we matched the sentinel value `{}` we pushed above.
+		else
+			code[#code+1] = format('__o[#__o+1] = [[%s]]', text)
+		end
+	end
+
+	-- Our return function returns the concatenation of all strings.
+	code[#code+1] = 'return table.concat(__o) \n end'
+
+	-- Our resultant code
+	return table.concat(code, '\n')
+end
+
+local function compile(name, tmpl, locals)
+	local code = parse(tmpl, locals)
+
+	---- Throw an error if there's a parse error in the generated code.
+	local f = assert(loadstring(code, name))
+
+	---- Return the anonymous function we just created.
+	return f()
+end
+
+local function read(path)
+	local file = assert(io.open(path, "r"))
+	local data = file:read("*all")
+
+	file:close()
+
+	return data
+end
+
+local CACHE = {}
+
+return function(filename, params)
+	if not CACHE[filename] then
+		local keys = {}
+
+		for k, _ in pairs(params) do
+			keys[#keys+1] = k
+		end
+
+		CACHE[filename] = compile(filename, read(filename), keys)
+	end
+
+	return CACHE[filename](params)
+end

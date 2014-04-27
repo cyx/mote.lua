@@ -1,0 +1,6 @@
+<h1>Users</h1>
+<ul>
+	{% for _, user in ipairs(users) do %}
+	<li><a href="{{ user.id }}">{{ user.name }}</a></li>
+	{% end %}
+</ul>

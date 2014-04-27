@@ -1,0 +1,5 @@
+<ul>
+{% for i = 1, N do %}
+	<li>{{ i }}</li>
+{% end %}
+</ul>
