@@ -1,6 +1,5 @@
 local format = string.format
 local sub    = string.sub
-local gsub   = string.gsub
 
 local CODEX = {
 	['{%'] = function(code)
